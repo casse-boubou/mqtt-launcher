@@ -57,8 +57,8 @@ class Config(object):
 
 try:
     cf = Config()
-except Exception as e:
-    print(f"[INFO]: Cannot load configuration from file '{CONFIG}': {str(e)}")
+except UnicodeDecodeError as unidecerr:
+    print(f"[INFO]: Cannot decode '{CONFIG}' with 'UTF-8' codec : {str(unidecerr)}")
     sys.exit(2)
 
 LOGFILE = cf.get('logfile', 'logfile')
@@ -106,8 +106,8 @@ def runprog(topic, param=None):
             universal_newlines=True,
             cwd='/tmp'
         )
-    except Exception as e:
-        res = "*****> %s" % str(e)
+    except subprocess.SubprocessError as subprocerr:
+        res = f"*****> {str(subprocerr)}"
 
     payload = res.rstrip('\n')
     (res, mid) =  mqttc.publish(publish, payload, qos=QOS, retain=False)
