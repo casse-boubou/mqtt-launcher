@@ -30,6 +30,7 @@
 __author__    = 'Jan-Piet Mens <jpmens()gmail.com>'
 __copyright__ = 'Copyright 2014 Jan-Piet Mens'
 
+import json
 import logging
 import os
 import socket
@@ -37,39 +38,139 @@ import string
 import subprocess
 import sys
 import time
+from configparser import ConfigParser, NoOptionError, NoSectionError
+from configparser import Error as ParserError
 
 import paho.mqtt.client as paho # pip install paho-mqtt
 
 CONFIG=os.getenv('MQTTLAUNCHERCONFIG', 'launcher.conf')
 
-class Config(object):
+
+
+
+
+class Config:
     """This class is used to access config file."""
     def __init__(self, filename=CONFIG):
-        self.config = {}
-        exec(compile(open(filename, "rb").read(), filename, 'exec'), self.config)
+        self.parser = ConfigParser(
+            inline_comment_prefixes="#",
+            interpolation=None
+        )
+        self.read_config_file(filename)
 
-    def get(self, key, default=None):
-        """Get the value of an option, if it exists.
-        Return the default value otherwise.
-        """
-        return self.config.get(key, default)
 
-try:
-    cf = Config()
-except UnicodeDecodeError as unidecerr:
-    print(f"[INFO]: Cannot decode '{CONFIG}' with 'UTF-8' codec : {str(unidecerr)}")
-    sys.exit(2)
+    def read_config_file(self, configfile):
+        """Read the config file."""
+        try:
+            with open(configfile, encoding='utf-8') as f:
+                self.parser.read_file(f)
+                self.parser.read(f)
+        except UnicodeDecodeError as unidecerr:
+            print(f"[INFO]: Cannot decode '{configfile}' with 'UTF-8' codec : {str(unidecerr)}")
+            sys.exit(2)
+        except ParserError as parserr:
+            print(f"[INFO]: Cannot load configuration from file '{configfile}': {str(parserr)}")
+            sys.exit(2)
+        except FileNotFoundError as nofilerr:
+            print(f"[INFO]: Cannot load configuration from file '{configfile}': {str(nofilerr)}")
+            sys.exit(2)
 
-DEFAULT_TOPIC = cf.get('client_topic', 'clients/mqtt-launcher')
-QOS = cf.get('mqtt_qos', '2')
-LOGFILE = cf.get('logfile', 'logfile')
-DEBUG = cf.get('debug', True)
+
+
+
+
+cf = Config()
+
+def get_value(section, option, default=None):
+    """Get the value of an option, if it exists.
+    Return the default value otherwise.
+    """
+    ret = default
+    try:
+        ret = cf.parser.get(section, option)
+    except NoOptionError:
+        print(
+            f"[INFO]: A requested '{option}' option was not found. Use default Value: '{default}'"
+        )
+    except NoSectionError:
+        print(
+            f"[INFO]: A requested '{section}' section was not found. Use default Value: '{default}'"
+        )
+
+    return ret
+
+def get_int_value(section, option, default=0):
+    """Get the int value of an option, if it exists.
+    Return the default value otherwise.
+    """
+    try:
+        return cf.parser.getint(section, option)
+    except NoOptionError:
+        print(
+            f"[INFO]: A requested '{option}' option was not found. Use default Value: '{default}'"
+        )
+        return int(default)
+    except NoSectionError:
+        print(
+            f"[INFO]: A requested '{section}' section was not found. Use default Value: '{default}'"
+        )
+        return int(default)
+
+def get_bool_value(section, option, default=False):
+    """Get the bool value of an option, if it exists.
+    Return the default value otherwise.
+    """
+    try:
+        return cf.parser.getboolean(section, option)
+    except NoOptionError:
+        print(
+            f"[INFO]: A requested '{option}' option was not found. Use default Value: '{default}'"
+        )
+        return bool(default)
+    except NoSectionError:
+        print(
+            f"[INFO]: A requested '{section}' section was not found. Use default Value: '{default}'"
+        )
+        return bool(default)
+
+def get_option_as_json(section, option):
+    """Return options from section as a JSON."""
+    option_as_json = get_value(section, option, {})
+    try:
+        option_as_json = json.loads(option_as_json)
+    except json.decoder.JSONDecodeError as jsondecerr:
+        line = str(jsondecerr.lineno-1) + "-" + str(jsondecerr.lineno)
+        print(f"""[ERROR]: {str(jsondecerr)}
+              Error when convert '{option}' in JSON.
+              Maybe you added or missed a comma \',\'
+              Maybe you are using single-quote (\') instead of double (\")
+              Please look carefully at line '{line}' in the following""")
+        print(f"{jsondecerr.doc}")
+        sys.exit(2)
+    except TypeError as jsontyperr:
+        print(f"[ERROR]: {str(jsontyperr)}")
+        print(f"""[INFO]: A requested '{option}' option was not found.
+              PLEASE PROVIDE A TOPICLIST""")
+
+    return option_as_json
+
+
+
+
+
+DEFAULT_TOPIC = get_value('MQTT_TOPICS', 'client_topic', 'clients/mqtt-launcher')
+QOS = get_int_value('MQTT_BROKER', 'mqtt_qos', '2')
+LOGFILE = get_value('LOG', 'logfile', 'logfile')
+DEBUG = get_bool_value('LOG', 'debug', True)
 LOGFORMAT = '%(asctime)-15s %(message)s'
-
 if DEBUG:
     logging.basicConfig(filename=LOGFILE, level=logging.DEBUG, format=LOGFORMAT)
 else:
     logging.basicConfig(filename=LOGFILE, level=logging.INFO, format=LOGFORMAT)
+
+
+
+
 
 logging.info("Starting")
 logging.debug("DEBUG MODE")
@@ -78,14 +179,14 @@ if __name__ == '__main__':
 
     userdata = {}
 
-    topiclist = cf.get('topiclist')
-    if topiclist is None:
+    topiclist = get_option_as_json('MQTT_TOPICS', 'topiclist')
+    if topiclist == {}:
         logging.info("No topic list. Aborting")
         sys.exit(2)
 
-    clientid = cf.get('mqtt_clientid', f'{DEFAULT_TOPIC}-{os.getpid()}')
+    clientid = get_value('MQTT_BROKER', 'mqtt_clientid', f'{DEFAULT_TOPIC}-{os.getpid()}')
 
-    transportType = cf.get('mqtt_transport_type', 'tcp')
+    transportType = get_value('MQTT_BROKER', 'mqtt_transport_type', 'tcp')
 
     # initialise MQTT broker connection
     mqttc = paho.Client(
@@ -173,19 +274,25 @@ if __name__ == '__main__':
     # Delays will be: 3, 6, 12, 24, 30, 30, ...
     #mqttc.reconnect_delay_set(delay=3, delay_max=30, exponential_backoff=True)
 
-    if cf.get('mqtt_username') is not None:
-        mqttc.username_pw_set(cf.get('mqtt_username'), cf.get('mqtt_password'))
+    if get_value('MQTT_BROKER', 'mqtt_username', None) is not None:
+        mqttc.username_pw_set(
+            get_value('MQTT_BROKER', 'mqtt_username'),
+            get_value('MQTT_BROKER', 'mqtt_password')
+        )
 
-    if cf.get('mqtt_tls') is not None:
+    if get_bool_value('MQTT_BROKER', 'mqtt_tls', False) is True:
         mqttc.tls_set()
-
-        if cf.get('mqtt_tls_verify') is not None:
-            mqttc.tls_insecure_set(False)
+        mqtt_tls_verify_value = get_bool_value('MQTT_BROKER', 'mqtt_tls_verify', True)
+        mqttc.tls_insecure_set(mqtt_tls_verify_value)
 
     if transportType == 'websockets':
         mqttc.ws_set_options(path="/ws")
 
-    mqttc.connect(cf.get('mqtt_broker', 'localhost'), int(cf.get('mqtt_port', '1883')), 60)
+    mqttc.connect(
+        get_value('MQTT_BROKER', 'mqtt_broker', 'localhost'),
+        get_int_value('MQTT_BROKER', 'mqtt_port', '1883'),
+        60
+    )
 
     while True:
         try:
