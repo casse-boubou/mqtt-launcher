@@ -30,6 +30,7 @@
 __author__    = 'Jan-Piet Mens <jpmens()gmail.com>'
 __copyright__ = 'Copyright 2014 Jan-Piet Mens'
 
+import argparse
 import json
 import logging
 import os
@@ -43,7 +44,19 @@ from configparser import Error as ParserError
 
 import paho.mqtt.client as paho # pip install paho-mqtt
 
-CONFIG=os.getenv('MQTTLAUNCHERCONFIG', 'launcher.conf')
+
+
+
+
+
+argparser = argparse.ArgumentParser()
+argparser.add_argument('-c', '--conf',
+                    dest='config_path',
+                    default='launcher.conf',
+                    type=str,
+                    help='Name or pathe to config file (default: launcher.conf)'
+)
+bash_arguments = argparser.parse_args()
 
 
 
@@ -51,12 +64,12 @@ CONFIG=os.getenv('MQTTLAUNCHERCONFIG', 'launcher.conf')
 
 class Config:
     """This class is used to access config file."""
-    def __init__(self, filename=CONFIG):
+    def __init__(self, path) -> None:
         self.parser = ConfigParser(
             inline_comment_prefixes="#",
             interpolation=None
         )
-        self.read_config_file(filename)
+        self.read_config_file(path)
 
 
     def read_config_file(self, configfile):
@@ -79,7 +92,7 @@ class Config:
 
 
 
-cf = Config()
+cf = Config(bash_arguments.config_path)
 
 def get_value(section, option, default=None):
     """Get the value of an option, if it exists.
