@@ -2,10 +2,3 @@
 launcher.conf
 logfile
 env.v3
-bin/
-include/
-lib64
-lib/
-pyvenv.cfg
-*.crt
-*.log

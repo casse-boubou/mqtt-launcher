@@ -32,7 +32,6 @@ __copyright__ = 'Copyright 2014 Jan-Piet Mens'
 
 import os
 import sys
-from pathlib import Path
 import subprocess
 import logging
 import paho.mqtt.client as paho # pip install paho-mqtt
@@ -42,21 +41,11 @@ import string
 
 qos=2
 CONFIG=os.getenv('MQTTLAUNCHERCONFIG', 'launcher.conf')
-TOPIC_LIST_KEY='topiclist'
 
 class Config(object):
-
     def __init__(self, filename=CONFIG):
         self.config = {}
-        conf_dir = Path(f"{filename}.d")
-        conf_files = [filename] + (
-            sorted([f for f in conf_dir.iterdir() if f.is_file()]) if conf_dir.is_dir() else []
-        )
-        merged_topics = {}
-        for conf_file in conf_files:
-            exec(compile(open(conf_file, "rb").read(), conf_file, "exec"), self.config)
-            merged_topics.update(self.config.get(TOPIC_LIST_KEY, {}))
-        self.config[TOPIC_LIST_KEY] = merged_topics
+        exec(compile(open(filename, "rb").read(), filename, 'exec'), self.config)
 
     def get(self, key, default=None):
         return self.config.get(key, default)
@@ -64,7 +53,7 @@ class Config(object):
 try:
     cf = Config()
 except Exception as e:
-    print("Cannot load configuration from %s or %s.d subdirectory: %s" % (CONFIG, CONFIG, str(e)))
+    print("Cannot load configuration from file %s: %s" % (CONFIG, str(e)))
     sys.exit(2)
 
 LOGFILE = cf.get('logfile', 'logfile')
@@ -134,9 +123,9 @@ if __name__ == '__main__':
 
     userdata = {
     }
-    topiclist = cf.get(TOPIC_LIST_KEY)
+    topiclist = cf.get('topiclist')
 
-    if not topiclist:
+    if topiclist is None:
         logging.info("No topic list. Aborting")
         sys.exit(2)
 
@@ -160,10 +149,7 @@ if __name__ == '__main__':
         mqttc.username_pw_set(cf.get('mqtt_username'), cf.get('mqtt_password'))
 
     if cf.get('mqtt_tls') is not None:
-        if cf.get('mqtt_tls_ca') is not None:
-            mqttc.tls_set(ca_certs=cf.get('mqtt_tls_ca'))
-        else:
-            mqttc.tls_set()
+        mqttc.tls_set()
 
         if cf.get('mqtt_tls_verify') is not None:
             mqttc.tls_insecure_set(False)
