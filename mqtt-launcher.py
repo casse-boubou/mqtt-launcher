@@ -294,7 +294,10 @@ if __name__ == '__main__':
         )
 
     if get_bool_value('MQTT_BROKER', 'mqtt_tls', False) is True:
-        mqttc.tls_set()
+        if get_value('MQTT_BROKER', 'mqtt_tls_ca', None) is not None:
+            mqttc.tls_set(ca_certs=get_value('MQTT_BROKER', 'mqtt_tls_ca', None))
+        else:
+            mqttc.tls_set()
         mqtt_tls_verify_value = get_bool_value('MQTT_BROKER', 'mqtt_tls_verify', True)
         mqttc.tls_insecure_set(mqtt_tls_verify_value)
 
