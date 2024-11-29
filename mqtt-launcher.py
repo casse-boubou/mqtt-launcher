@@ -73,68 +73,6 @@ else:
 logging.info("Starting")
 logging.debug("DEBUG MODE")
 
-def runprog(topic, param=None):
-    """Execute the program command from config file."""
-
-    publish = f"{topic}/report"
-
-    if param is not None and all(c in string.printable for c in param) is False:
-        logging.debug("Param for topic %s is not printable; skipping", topic)
-        return
-
-    if topic not in topiclist:
-        logging.info("Topic %s isn't configured", topic)
-        return
-
-    if param is not None and param in topiclist[topic]:
-        cmd = topiclist[topic].get(param)
-    else:
-        if None in topiclist[topic]: ### and topiclist[topic][None] is not None:
-            cmd = [p.replace('@!@', param) for p in topiclist[topic][None]]
-        else:
-            logging.info("No matching param (%s) for %s", param, topic)
-            return
-
-    logging.debug("Running t=%s: %s", topic, cmd)
-
-    try:
-        res = subprocess.check_output(
-            cmd,
-            stdin=None,
-            stderr=subprocess.STDOUT,
-            shell=False,
-            universal_newlines=True,
-            cwd='/tmp'
-        )
-    except subprocess.SubprocessError as subprocerr:
-        res = f"*****> {str(subprocerr)}"
-
-    payload = res.rstrip('\n')
-    (res, mid) =  mqttc.publish(publish, payload, qos=QOS, retain=False)
-
-def on_connect(client, userdata, flags, reason_code, properties):
-    """When the connection is established."""
-    if reason_code == 0:
-        logging.debug("Connected to MQTT broker, subscribing to topics...")
-        for topic in topiclist:
-            mqttc.subscribe(topic, QOS)
-            logging.debug("Subscribed to Topic \"%s\", QOS %s", topic, QOS)
-    if reason_code > 0:
-        logging.debug("Connected with result code: %s", reason_code)
-        logging.debug("No connection. Aborting")
-        sys.exit(2)
-
-def on_message(client, userdata, msg):
-    """When a new message is received on the topic."""
-    logging.debug(msg.topic+" "+str(msg.qos)+" "+msg.payload.decode('utf-8'))
-
-    runprog(msg.topic, msg.payload.decode('utf-8'))
-
-def on_disconnect(client, userdata, flags, reason_code, properties):
-    """When the connection is over."""
-    logging.debug("OOOOPS! launcher disconnects")
-    time.sleep(10)
-
 if __name__ == '__main__':
 
     userdata = {
@@ -156,6 +94,75 @@ if __name__ == '__main__':
         clean_session=False,
         transport=transportType
     )
+
+
+    def on_connect(client, userdata, flags, reason_code, properties):
+        """When the connection is established."""
+
+        if reason_code == 0:
+            logging.debug("Connected to MQTT broker, subscribing to topics...")
+            for topic in topiclist:
+                mqttc.subscribe(topic, QOS)
+                logging.debug("Subscribed to Topic \"%s\", QOS %s", topic, QOS)
+        if reason_code > 0:
+            logging.debug("Connected with result code: %s", reason_code)
+            logging.debug("No connection. Aborting")
+            sys.exit(2)
+
+
+    def on_message(client, userdata, msg):
+        """When a new message is received on the topic."""
+
+        logging.debug(msg.topic+" "+str(msg.qos)+" "+msg.payload.decode('utf-8'))
+        runprog(msg.topic, msg.payload.decode('utf-8'))
+
+
+    def on_disconnect(client, userdata, flags, reason_code, properties):
+        """When the connection is over."""
+
+        logging.debug("OOOOPS! launcher disconnects")
+        time.sleep(10)
+
+
+    def runprog(topic, param=None):
+        """Execute the program command from config file."""
+
+        publish = f"{topic}/report"
+
+        if param is not None and all(c in string.printable for c in param) is False:
+            logging.debug("Param for topic %s is not printable; skipping", topic)
+            return
+
+        if topic not in topiclist:
+            logging.info("Topic %s isn't configured", topic)
+            return
+
+        if param is not None and param in topiclist[topic]:
+            cmd = topiclist[topic].get(param)
+        else:
+            if None in topiclist[topic]: ### and topiclist[topic][None] is not None:
+                cmd = [p.replace('@!@', param) for p in topiclist[topic][None]]
+            else:
+                logging.info("No matching param (%s) for %s", param, topic)
+                return
+
+        logging.debug("Running t=%s: %s", topic, cmd)
+
+        try:
+            res = subprocess.check_output(
+                cmd,
+                stdin=None,
+                stderr=subprocess.STDOUT,
+                shell=False,
+                universal_newlines=True,
+                cwd='/tmp'
+            )
+        except subprocess.SubprocessError as subprocerr:
+            res = f"*****> {str(subprocerr)}"
+
+        payload = res.rstrip('\n')
+        (res, mid) =  mqttc.publish(publish, payload, qos=QOS, retain=False)
+
 
     mqttc.on_message = on_message
     mqttc.on_connect = on_connect
