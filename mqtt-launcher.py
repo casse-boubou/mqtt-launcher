@@ -40,7 +40,6 @@ import time
 
 import paho.mqtt.client as paho # pip install paho-mqtt
 
-QOS=2
 CONFIG=os.getenv('MQTTLAUNCHERCONFIG', 'launcher.conf')
 
 class Config(object):
@@ -61,9 +60,11 @@ except UnicodeDecodeError as unidecerr:
     print(f"[INFO]: Cannot decode '{CONFIG}' with 'UTF-8' codec : {str(unidecerr)}")
     sys.exit(2)
 
+DEFAULT_TOPIC = cf.get('client_topic', 'clients/mqtt-launcher')
+QOS = cf.get('mqtt_qos', '2')
 LOGFILE = cf.get('logfile', 'logfile')
+DEBUG = cf.get('debug', True)
 LOGFORMAT = '%(asctime)-15s %(message)s'
-DEBUG=True
 
 if DEBUG:
     logging.basicConfig(filename=LOGFILE, level=logging.DEBUG, format=LOGFORMAT)
@@ -75,15 +76,14 @@ logging.debug("DEBUG MODE")
 
 if __name__ == '__main__':
 
-    userdata = {
-    }
-    topiclist = cf.get('topiclist')
+    userdata = {}
 
+    topiclist = cf.get('topiclist')
     if topiclist is None:
         logging.info("No topic list. Aborting")
         sys.exit(2)
 
-    clientid = cf.get('mqtt_clientid', f'mqtt-launcher-{os.getpid()}')
+    clientid = cf.get('mqtt_clientid', f'{DEFAULT_TOPIC}-{os.getpid()}')
 
     transportType = cf.get('mqtt_transport_type', 'tcp')
 
@@ -168,7 +168,7 @@ if __name__ == '__main__':
     mqttc.on_connect = on_connect
     mqttc.on_disconnect = on_disconnect
 
-    mqttc.will_set('clients/mqtt-launcher', payload="Adios!", qos=0, retain=False)
+    mqttc.will_set(DEFAULT_TOPIC, payload="Adios!", qos=0, retain=False)
 
     # Delays will be: 3, 6, 12, 24, 30, 30, ...
     #mqttc.reconnect_delay_set(delay=3, delay_max=30, exponential_backoff=True)
